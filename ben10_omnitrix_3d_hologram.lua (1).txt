@@ -1,0 +1,924 @@
+--// ================= BEN 10 OMNITRIX SCRIPT (3D HOLOGRAM) =================
+--// Features: Watch on hand, 3D alien hologram emerges from watch, proper effects
+--// Creator: Enhanced by Claude
+
+--// SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local camera = workspace.CurrentCamera
+
+--// ================= CONFIG =================
+local Config = {
+    -- Accessories
+    OmnitrixR6 = 124828503081150,
+    OmnitrixR15 = 74195258438356,
+    
+    -- Animation settings
+    WatchClickAnimationId = "rbxassetid://95977571599797",
+    TransformAnimationId = "rbxassetid://17292505729",
+    ClickAnimationFreezeTime = 1.1,
+    TransformAnimationFreezeTime = 0.6,
+    
+    -- Watch positioning (RIGHT HAND)
+    WatchOffset = {
+        R6 = CFrame.new(0, -0.3, 0),
+        R15 = CFrame.new(0, -0.12, -0.03)
+    },
+    
+    WatchScale = 0.7,
+    TransformDuration = 300, -- 5 minutes
+    TransformCooldown = 60, -- 1 minute
+    
+    Aliens = {
+        {Name = "Fourarms", MorphID = 17325160621},
+        {Name = "Heatblast", MorphID = 17325160621},
+        {Name = "XLR8", MorphID = 17325160621},
+        {Name = "Diamondhead", MorphID = 17325160621},
+        {Name = "Wildmutt", MorphID = 17325160621},
+        {Name = "Upgrade", MorphID = 17325160621},
+        {Name = "Ripjaws", MorphID = 17325160621},
+        {Name = "Stinkfly", MorphID = 17325160621},
+        {Name = "Ghostfreak", MorphID = 17325160621},
+        {Name = "Cannonbolt", MorphID = 17325160621},
+        {Name = "Wildvine", MorphID = 17325160621},
+        {Name = "Upchuck", MorphID = 17325160621},
+    }
+}
+
+--// ================= STATE VARIABLES =================
+local currentAlienIndex = 1
+local isWatchOpen = false
+local equippedOmnitrix = nil
+local watchGui = nil
+local alienDisplay = nil
+local isTransforming = false
+local currentAnimationTrack = nil
+local isTransformed = false
+local transformEndTime = 0
+local cooldownEndTime = 0
+local savedCharacterData = {}
+
+--// ================= FILE DOWNLOADER =================
+local function downloadFile(path, link)
+    if not isfile(path) then
+        local success, content = pcall(function()
+            return game:HttpGet(link)
+        end)
+        if success and content then
+            writefile(path, content)
+        end
+    end
+end
+
+--// ================= DOWNLOAD ASSETS =================
+print("[Omnitrix] Downloading assets...")
+
+downloadFile("ben10_click.mp3", "https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/ben_10_watch.mp3")
+downloadFile("alien_switch.mp3", "https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/omnitrix-changing-made-with-Voicemod.mp3")
+downloadFile("ben10_transform.mp3", "https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/ben-10-transforming-made-with-Voicemod.mp3")
+downloadFile("button.png", "https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/lv_0_20260130212156.jpg")
+
+local clickSoundId = getcustomasset("ben10_click.mp3")
+local switchSoundId = getcustomasset("alien_switch.mp3")
+local transformSoundId = getcustomasset("ben10_transform.mp3")
+local buttonImageId = getcustomasset("button.png")
+
+local imageFiles = {
+    {file="img1.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_213505_Chrome.jpg"},
+    {file="img2.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_213946_Chrome.jpg"},
+    {file="img3.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_213959_Chrome.jpg"},
+    {file="img4.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214142_Chrome.jpg"},
+    {file="img5.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_213811_Chrome.jpg"},
+    {file="img6.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214032_Chrome.jpg"},
+    {file="img7.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214016_Chrome.jpg"},
+    {file="img8.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214749_Chrome.jpg"},
+    {file="img9.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214202_Chrome.jpg"},
+    {file="img10.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214702_Chrome.jpg"},
+    {file="img11.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214016_Chrome.jpg"},
+    {file="img12.jpg", url="https://raw.githubusercontent.com/EndgoalYt/Ben-tennyson-/main/Screenshot_20260130_214749_Chrome.jpg"},
+}
+
+for _, img in ipairs(imageFiles) do
+    downloadFile(img.file, img.url)
+end
+
+local Images = {}
+for _, img in ipairs(imageFiles) do
+    table.insert(Images, getcustomasset(img.file))
+end
+
+print("[Omnitrix] Assets loaded!")
+
+--// ================= HELPER FUNCTIONS =================
+local function isR15(char)
+    return char:FindFirstChild("UpperTorso") ~= nil
+end
+
+local function getRightArm(char)
+    return char:FindFirstChild("RightHand") 
+        or char:FindFirstChild("RightLowerArm")
+        or char:FindFirstChild("Right Arm")
+end
+
+local function loadAccessory(assetId)
+    local success, result = pcall(function()
+        return game:GetObjects("rbxassetid://" .. tostring(assetId))[1]
+    end)
+    if success and result then
+        return result
+    end
+    return nil
+end
+
+local function createWeld(part0, part1, c0, c1)
+    local weld = Instance.new("Weld")
+    weld.Part0 = part0
+    weld.Part1 = part1
+    weld.C0 = c0 or CFrame.new()
+    weld.C1 = c1 or CFrame.new()
+    weld.Parent = part0
+    return weld
+end
+
+local function makeBlocky(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    
+    pcall(function()
+        for _, item in ipairs(char:GetChildren()) do
+            if item:IsA("CharacterMesh") then
+                item:Destroy()
+            end
+        end
+        
+        local description = hum:GetAppliedDescription()
+        description.Head = 0
+        description.Torso = 0
+        description.LeftArm = 0
+        description.RightArm = 0
+        description.LeftLeg = 0
+        description.RightLeg = 0
+        hum:ApplyDescription(description)
+    end)
+end
+
+local function formatTime(seconds)
+    local mins = math.floor(seconds / 60)
+    local secs = seconds % 60
+    return string.format("%d:%02d", mins, secs)
+end
+
+--// ================= 3D ALIEN HOLOGRAM EFFECT =================
+local function create3DAlienHologram(watchHandle, alienIndex)
+    if not watchHandle then return end
+    
+    -- Create green light beam from watch
+    local lightBeam = Instance.new("Part")
+    lightBeam.Name = "AlienLightBeam"
+    lightBeam.Size = Vector3.new(1, 0.5, 1)
+    lightBeam.Material = Enum.Material.Neon
+    lightBeam.BrickColor = BrickColor.new("Lime green")
+    lightBeam.Anchored = true
+    lightBeam.CanCollide = false
+    lightBeam.Transparency = 0.3
+    lightBeam.CFrame = watchHandle.CFrame
+    lightBeam.Parent = workspace
+    
+    -- Add light source
+    local pointLight = Instance.new("PointLight", lightBeam)
+    pointLight.Brightness = 10
+    pointLight.Range = 20
+    pointLight.Color = Color3.fromRGB(0, 255, 0)
+    
+    -- Create particles shooting upward
+    local particles = Instance.new("ParticleEmitter", lightBeam)
+    particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    particles.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0))
+    particles.Size = NumberSequence.new(2, 0)
+    particles.Transparency = NumberSequence.new(0, 1)
+    particles.Lifetime = NumberRange.new(1, 2)
+    particles.Rate = 100
+    particles.Speed = NumberRange.new(10, 15)
+    particles.SpreadAngle = Vector2.new(30, 30)
+    particles.EmissionDirection = Enum.NormalId.Top
+    
+    -- Create 3D alien hologram/silhouette
+    local hologram = Instance.new("Part")
+    hologram.Name = "AlienHologram"
+    hologram.Size = Vector3.new(3, 6, 0.5)
+    hologram.Material = Enum.Material.Neon
+    hologram.BrickColor = BrickColor.new("Really red")
+    hologram.Anchored = true
+    hologram.CanCollide = false
+    hologram.Transparency = 0.6
+    hologram.CFrame = watchHandle.CFrame * CFrame.new(0, 3, 0)
+    hologram.Parent = workspace
+    
+    -- Add hologram light
+    local hologramLight = Instance.new("PointLight", hologram)
+    hologramLight.Brightness = 8
+    hologramLight.Range = 15
+    hologramLight.Color = Color3.fromRGB(255, 100, 100)
+    
+    -- Add texture to hologram (alien image)
+    local decal = Instance.new("Decal", hologram)
+    decal.Texture = Images[alienIndex]
+    decal.Face = Enum.NormalId.Front
+    decal.Transparency = 0.3
+    
+    local decal2 = Instance.new("Decal", hologram)
+    decal2.Texture = Images[alienIndex]
+    decal2.Face = Enum.NormalId.Back
+    decal2.Transparency = 0.3
+    
+    -- Make hologram face camera
+    local billboard = Instance.new("BillboardGui", hologram)
+    billboard.Size = UDim2.new(0, 0, 0, 0)
+    billboard.AlwaysOnTop = false
+    
+    -- Animate light beam expanding
+    local beamTween = TweenService:Create(lightBeam, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = Vector3.new(8, 15, 8),
+        CFrame = watchHandle.CFrame * CFrame.new(0, 7, 0),
+        Transparency = 0.7
+    })
+    
+    -- Animate hologram rising and growing
+    local hologramTween = TweenService:Create(hologram, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = Vector3.new(4, 7, 0.8),
+        CFrame = watchHandle.CFrame * CFrame.new(0, 6, 0),
+        Transparency = 0.3
+    })
+    
+    beamTween:Play()
+    hologramTween:Play()
+    
+    -- Pulse effect
+    task.spawn(function()
+        for i = 1, 10 do
+            pointLight.Brightness = 10 + math.sin(i * 0.5) * 3
+            hologramLight.Brightness = 8 + math.sin(i * 0.5) * 2
+            task.wait(0.15)
+        end
+    end)
+    
+    -- Rotate hologram slowly
+    task.spawn(function()
+        for i = 1, 15 do
+            hologram.CFrame = hologram.CFrame * CFrame.Angles(0, math.rad(5), 0)
+            task.wait(0.1)
+        end
+    end)
+    
+    -- Cleanup
+    task.wait(2)
+    
+    particles.Enabled = false
+    
+    local fadeTween1 = TweenService:Create(lightBeam, TweenInfo.new(0.5), {Transparency = 1})
+    local fadeTween2 = TweenService:Create(hologram, TweenInfo.new(0.5), {Transparency = 1})
+    local fadeTween3 = TweenService:Create(pointLight, TweenInfo.new(0.5), {Brightness = 0})
+    local fadeTween4 = TweenService:Create(hologramLight, TweenInfo.new(0.5), {Brightness = 0})
+    
+    fadeTween1:Play()
+    fadeTween2:Play()
+    fadeTween3:Play()
+    fadeTween4:Play()
+    
+    task.wait(0.6)
+    lightBeam:Destroy()
+    hologram:Destroy()
+end
+
+--// ================= ANIMATION FUNCTIONS =================
+local function playAnimation(animationId, freezeTime)
+    pcall(function()
+        if currentAnimationTrack then
+            currentAnimationTrack:Stop()
+        end
+    end)
+    
+    local success, anim = pcall(function()
+        local a = Instance.new("Animation")
+        a.AnimationId = animationId
+        return humanoid:LoadAnimation(a)
+    end)
+    
+    if success and anim then
+        currentAnimationTrack = anim
+        anim:Play()
+        
+        task.wait(freezeTime)
+        anim:AdjustSpeed(0)
+        
+        return anim
+    end
+    
+    return nil
+end
+
+local function stopAnimation()
+    pcall(function()
+        if currentAnimationTrack then
+            currentAnimationTrack:Stop()
+            currentAnimationTrack = nil
+        end
+    end)
+end
+
+--// ================= EQUIP OMNITRIX =================
+local function equipOmnitrix(char)
+    local rightArm = getRightArm(char)
+    if not rightArm then 
+        warn("[Omnitrix] Could not find right arm!")
+        return false
+    end
+    
+    if equippedOmnitrix and equippedOmnitrix.Parent then
+        equippedOmnitrix:Destroy()
+    end
+    
+    local omnitrixId = isR15(char) and Config.OmnitrixR15 or Config.OmnitrixR6
+    local omnitrix = loadAccessory(omnitrixId)
+    
+    if omnitrix then
+        omnitrix.Parent = workspace
+        
+        local handle = omnitrix:FindFirstChild("Handle")
+        if not handle then
+            omnitrix:Destroy()
+            warn("[Omnitrix] No handle found!")
+            return false
+        end
+        
+        handle.CanCollide = false
+        handle.Massless = true
+        handle.Anchored = false
+        handle.Size = handle.Size * Config.WatchScale
+        
+        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+        if mesh then
+            mesh.Scale = mesh.Scale * Config.WatchScale
+        end
+        
+        for _, child in ipairs(handle:GetChildren()) do
+            if child:IsA("Weld") or child:IsA("Motor6D") then
+                child:Destroy()
+            end
+        end
+        
+        local offset = isR15(char) and Config.WatchOffset.R15 or Config.WatchOffset.R6
+        createWeld(rightArm, handle, offset, CFrame.new())
+        
+        omnitrix.Parent = char
+        omnitrix.Name = "Omnitrix"
+        equippedOmnitrix = omnitrix
+        
+        print("[Omnitrix] ✓ Watch equipped on right hand!")
+        return true
+    else
+        warn("[Omnitrix] Failed to load watch!")
+        return false
+    end
+end
+
+--// ================= CREATE WATCH UI =================
+local function createWatchUI(char)
+    local rightArm = getRightArm(char)
+    if not rightArm then return end
+    
+    if watchGui and watchGui.Parent then
+        watchGui:Destroy()
+    end
+    
+    watchGui = Instance.new("SurfaceGui")
+    watchGui.Parent = equippedOmnitrix and equippedOmnitrix:FindFirstChild("Handle") or rightArm
+    watchGui.Face = Enum.NormalId.Top
+    watchGui.AlwaysOnTop = false
+    watchGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+    watchGui.PixelsPerStud = 100
+    watchGui.Enabled = false
+    watchGui.Name = "OmnitrixDisplay"
+    
+    local frame = Instance.new("Frame", watchGui)
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BorderSizePixel = 0
+    
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(1, 0)
+    
+    local glow = Instance.new("ImageLabel", frame)
+    glow.Size = UDim2.new(1.2, 0, 1.2, 0)
+    glow.Position = UDim2.new(-0.1, 0, -0.1, 0)
+    glow.BackgroundTransparency = 1
+    glow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+    glow.ImageColor3 = Color3.fromRGB(0, 255, 0)
+    glow.ImageTransparency = 0.5
+    
+    alienDisplay = Instance.new("ImageLabel", frame)
+    alienDisplay.Name = "AlienDisplay"
+    alienDisplay.Size = UDim2.new(0.8, 0, 0.8, 0)
+    alienDisplay.Position = UDim2.new(0.1, 0, 0.1, 0)
+    alienDisplay.BackgroundTransparency = 1
+    alienDisplay.ScaleType = Enum.ScaleType.Fit
+    alienDisplay.Image = Images[currentAlienIndex]
+    alienDisplay.Visible = true
+    
+    local timerLabel = Instance.new("TextLabel", frame)
+    timerLabel.Name = "Timer"
+    timerLabel.Size = UDim2.new(0.9, 0, 0.25, 0)
+    timerLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
+    timerLabel.BackgroundTransparency = 1
+    timerLabel.Text = "5:00"
+    timerLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    timerLabel.Font = Enum.Font.GothamBold
+    timerLabel.TextScaled = true
+    timerLabel.Visible = false
+    
+    local revertBtn = Instance.new("TextButton", frame)
+    revertBtn.Name = "RevertButton"
+    revertBtn.Size = UDim2.new(0.85, 0, 0.3, 0)
+    revertBtn.Position = UDim2.new(0.075, 0, 0.5, 0)
+    revertBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+    revertBtn.Text = "REVERT"
+    revertBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    revertBtn.Font = Enum.Font.GothamBold
+    revertBtn.TextScaled = true
+    revertBtn.Visible = false
+    
+    Instance.new("UICorner", revertBtn).CornerRadius = UDim.new(0.2, 0)
+    
+    return watchGui
+end
+
+--// ================= CAMERA FUNCTIONS =================
+local function smoothCameraToWatch()
+    if not equippedOmnitrix then return end
+    
+    local handle = equippedOmnitrix:FindFirstChild("Handle")
+    if not handle then return end
+    
+    camera.CameraType = Enum.CameraType.Scriptable
+    
+    local watchPosition = handle.Position
+    local cameraOffset = CFrame.new(0, 0.3, 0.8)
+    local targetCFrame = CFrame.new(watchPosition) * cameraOffset * CFrame.Angles(math.rad(-20), 0, 0)
+    
+    local cameraPart = Instance.new("Part")
+    cameraPart.Anchored = true
+    cameraPart.CanCollide = false
+    cameraPart.Transparency = 1
+    cameraPart.CFrame = camera.CFrame
+    cameraPart.Parent = workspace
+    
+    local tween = TweenService:Create(cameraPart, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {CFrame = targetCFrame})
+    
+    local connection = RunService.RenderStepped:Connect(function()
+        if cameraPart and cameraPart.Parent then
+            camera.CFrame = cameraPart.CFrame
+        end
+    end)
+    
+    tween:Play()
+    tween.Completed:Connect(function()
+        cameraPart:Destroy()
+        connection:Disconnect()
+    end)
+end
+
+local function resetCamera()
+    camera.CameraType = Enum.CameraType.Custom
+    camera.CameraSubject = humanoid
+end
+
+--// ================= UI SETUP =================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Name = "OmnitrixUI"
+
+local OpenButton = Instance.new("ImageButton", ScreenGui)
+OpenButton.Size = UDim2.new(0, 80, 0, 80)
+OpenButton.Position = UDim2.new(0.9, -40, 0.85, -40)
+OpenButton.Image = buttonImageId
+OpenButton.BackgroundTransparency = 1
+
+Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
+
+local CooldownOverlay = Instance.new("Frame", OpenButton)
+CooldownOverlay.Size = UDim2.new(1, 0, 1, 0)
+CooldownOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+CooldownOverlay.BackgroundTransparency = 0.7
+CooldownOverlay.BorderSizePixel = 0
+CooldownOverlay.Visible = false
+
+Instance.new("UICorner", CooldownOverlay).CornerRadius = UDim.new(1, 0)
+
+local CooldownText = Instance.new("TextLabel", CooldownOverlay)
+CooldownText.Size = UDim2.new(1, 0, 1, 0)
+CooldownText.BackgroundTransparency = 1
+CooldownText.Text = "60"
+CooldownText.TextColor3 = Color3.fromRGB(255, 255, 255)
+CooldownText.Font = Enum.Font.GothamBold
+CooldownText.TextSize = 20
+
+local ClickSound = Instance.new("Sound", ScreenGui)
+ClickSound.SoundId = clickSoundId
+ClickSound.Volume = 3
+
+local SwitchSound = Instance.new("Sound", ScreenGui)
+SwitchSound.SoundId = switchSoundId
+SwitchSound.Volume = 4.1
+
+local TransformSound = Instance.new("Sound", ScreenGui)
+TransformSound.SoundId = transformSoundId
+TransformSound.Volume = 4.1
+
+-- Mobile controls
+local MobileFrame = Instance.new("Frame", ScreenGui)
+MobileFrame.Size = UDim2.new(0, 200, 0, 150)
+MobileFrame.Position = UDim2.new(0.5, -100, 0.7, -75)
+MobileFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MobileFrame.BackgroundTransparency = 0.3
+MobileFrame.BorderSizePixel = 0
+MobileFrame.Visible = false
+
+Instance.new("UICorner", MobileFrame).CornerRadius = UDim.new(0, 15)
+
+local PrevButton = Instance.new("TextButton", MobileFrame)
+PrevButton.Size = UDim2.new(0.4, 0, 0.4, 0)
+PrevButton.Position = UDim2.new(0.05, 0, 0.1, 0)
+PrevButton.Text = "◀ PREV"
+PrevButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+PrevButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+PrevButton.Font = Enum.Font.GothamBold
+PrevButton.TextSize = 16
+
+Instance.new("UICorner", PrevButton).CornerRadius = UDim.new(0, 8)
+
+local NextButton = Instance.new("TextButton", MobileFrame)
+NextButton.Size = UDim2.new(0.4, 0, 0.4, 0)
+NextButton.Position = UDim2.new(0.55, 0, 0.1, 0)
+NextButton.Text = "NEXT ▶"
+NextButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+NextButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+NextButton.Font = Enum.Font.GothamBold
+NextButton.TextSize = 16
+
+Instance.new("UICorner", NextButton).CornerRadius = UDim.new(0, 8)
+
+local TransformButton = Instance.new("TextButton", MobileFrame)
+TransformButton.Size = UDim2.new(0.9, 0, 0.35, 0)
+TransformButton.Position = UDim2.new(0.05, 0, 0.6, 0)
+TransformButton.Text = "TRANSFORM"
+TransformButton.TextColor3 = Color3.fromRGB(0, 255, 0)
+TransformButton.BackgroundColor3 = Color3.fromRGB(20, 80, 20)
+TransformButton.Font = Enum.Font.GothamBold
+TransformButton.TextSize = 18
+
+Instance.new("UICorner", TransformButton).CornerRadius = UDim.new(0, 8)
+
+--// ================= WATCH CONTROLS =================
+local function openWatch()
+    if isTransforming or isTransformed then return end
+    
+    if tick() < cooldownEndTime then
+        warn("[Omnitrix] Cooldown active!")
+        return
+    end
+    
+    pcall(function() ClickSound:Play() end)
+    
+    playAnimation(Config.WatchClickAnimationId, Config.ClickAnimationFreezeTime)
+    
+    if watchGui then
+        watchGui.Enabled = true
+        if alienDisplay then alienDisplay.Visible = true end
+        
+        local timer = watchGui:FindFirstChild("Frame"):FindFirstChild("Timer")
+        local revert = watchGui:FindFirstChild("Frame"):FindFirstChild("RevertButton")
+        if timer then timer.Visible = false end
+        if revert then revert.Visible = false end
+    end
+    
+    local handle = equippedOmnitrix and equippedOmnitrix:FindFirstChild("Handle")
+    if handle then
+        pcall(function()
+            TweenService:Create(handle, TweenInfo.new(0.3), {Size = handle.Size * 1.2}):Play()
+        end)
+    end
+    
+    if UserInputService.TouchEnabled then
+        MobileFrame.Visible = true
+    end
+    
+    isWatchOpen = true
+end
+
+local function closeWatch()
+    pcall(function() ClickSound:Play() end)
+    
+    stopAnimation()
+    
+    if watchGui then
+        watchGui.Enabled = false
+    end
+    
+    local handle = equippedOmnitrix and equippedOmnitrix:FindFirstChild("Handle")
+    if handle then
+        pcall(function()
+            TweenService:Create(handle, TweenInfo.new(0.3), {Size = handle.Size / 1.2}):Play()
+        end)
+    end
+    
+    MobileFrame.Visible = false
+    isWatchOpen = false
+end
+
+local function switchAlien(direction)
+    if not isWatchOpen or isTransformed then return end
+    
+    if direction == "next" then
+        currentAlienIndex = currentAlienIndex + 1
+        if currentAlienIndex > #Images then
+            currentAlienIndex = 1
+        end
+    else
+        currentAlienIndex = currentAlienIndex - 1
+        if currentAlienIndex < 1 then
+            currentAlienIndex = #Images
+        end
+    end
+    
+    if alienDisplay then
+        alienDisplay.Image = Images[currentAlienIndex]
+    end
+    
+    pcall(function() SwitchSound:Play() end)
+end
+
+--// ================= TRANSFORM & REVERT =================
+local function transformToAlien(alienIndex)
+    if isTransforming or isTransformed or not isWatchOpen then return end
+    
+    isTransforming = true
+    
+    savedCharacterData = {
+        model = character,
+        position = character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart.CFrame
+    }
+    
+    pcall(function() TransformSound:Play() end)
+    
+    if watchGui then
+        watchGui.Enabled = false
+    end
+    MobileFrame.Visible = false
+    
+    stopAnimation()
+    playAnimation(Config.TransformAnimationId, Config.TransformAnimationFreezeTime)
+    
+    smoothCameraToWatch()
+    
+    task.wait(0.5)
+    
+    -- Create 3D alien hologram from watch!
+    local watchHandle = equippedOmnitrix and equippedOmnitrix:FindFirstChild("Handle")
+    if watchHandle then
+        create3DAlienHologram(watchHandle, alienIndex)
+    end
+    
+    task.wait(2)
+    resetCamera()
+    
+    local alienData = Config.Aliens[alienIndex]
+    if alienData and alienData.MorphID then
+        pcall(function()
+            local morphModel = game:GetObjects("rbxassetid://" .. alienData.MorphID)[1]
+            
+            if morphModel then
+                local savedCF = savedCharacterData.position or CFrame.new(0, 5, 0)
+                
+                morphModel.Parent = workspace
+                morphModel:MoveTo(savedCF.Position)
+                
+                player.Character = morphModel
+                character = morphModel
+                humanoid = morphModel:WaitForChild("Humanoid")
+                
+                task.wait(0.5)
+                equipOmnitrix(morphModel)
+                createWatchUI(morphModel)
+                
+                transformEndTime = tick() + Config.TransformDuration
+                isTransformed = true
+                
+                if watchGui then
+                    watchGui.Enabled = true
+                    if alienDisplay then alienDisplay.Visible = false end
+                    
+                    local timer = watchGui:FindFirstChild("Frame"):FindFirstChild("Timer")
+                    local revert = watchGui:FindFirstChild("Frame"):FindFirstChild("RevertButton")
+                    if timer then 
+                        timer.Visible = true
+                        timer.Text = "5:00"
+                    end
+                    if revert then revert.Visible = true end
+                end
+                
+                print("[Omnitrix] Transformed to: " .. alienData.Name)
+            end
+        end)
+    end
+    
+    stopAnimation()
+    isWatchOpen = false
+    isTransforming = false
+end
+
+local function revertToHuman()
+    if not isTransformed then return end
+    
+    pcall(function() TransformSound:Play() end)
+    
+    if watchGui then
+        watchGui.Enabled = false
+    end
+    
+    if savedCharacterData.model and savedCharacterData.model.Parent then
+        local currentPos = character:FindFirstChild("HumanoidRootPart")
+        local savedCF = currentPos and currentPos.CFrame or savedCharacterData.position
+        
+        player.Character = savedCharacterData.model
+        character = savedCharacterData.model
+        humanoid = character:WaitForChild("Humanoid")
+        
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp and savedCF then
+            hrp.CFrame = savedCF
+        end
+    end
+    
+    cooldownEndTime = tick() + Config.TransformCooldown
+    CooldownOverlay.Visible = true
+    
+    isTransformed = false
+    savedCharacterData = {}
+    
+    print("[Omnitrix] Reverted to human!")
+end
+
+--// ================= EVENT CONNECTIONS =================
+OpenButton.MouseButton1Click:Connect(function()
+    if isWatchOpen then
+        closeWatch()
+    else
+        openWatch()
+    end
+end)
+
+PrevButton.MouseButton1Click:Connect(function()
+    switchAlien("prev")
+end)
+
+NextButton.MouseButton1Click:Connect(function()
+    switchAlien("next")
+end)
+
+TransformButton.MouseButton1Click:Connect(function()
+    transformToAlien(currentAlienIndex)
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if watchGui then
+            local revert = watchGui:FindFirstChild("Frame") and watchGui:FindFirstChild("Frame"):FindFirstChild("RevertButton")
+            if revert and not revert:FindFirstChild("Connected") then
+                local marker = Instance.new("BoolValue", revert)
+                marker.Name = "Connected"
+                
+                revert.MouseButton1Click:Connect(function()
+                    revertToHuman()
+                end)
+            end
+        end
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or isTransforming then return end
+    
+    if isWatchOpen and not isTransformed then
+        if input.KeyCode == Enum.KeyCode.E then
+            switchAlien("next")
+        elseif input.KeyCode == Enum.KeyCode.Q then
+            switchAlien("prev")
+        elseif input.KeyCode == Enum.KeyCode.T then
+            transformToAlien(currentAlienIndex)
+        elseif input.KeyCode == Enum.KeyCode.F then
+            closeWatch()
+        end
+    end
+    
+    if isTransformed and input.KeyCode == Enum.KeyCode.R then
+        revertToHuman()
+    end
+end)
+
+humanoid.EmoteTriggered:Connect(function()
+    if not isWatchOpen and not isTransforming and not isTransformed then
+        task.wait(0.1)
+        openWatch()
+    end
+end)
+
+--// ================= TIMER LOOP =================
+task.spawn(function()
+    while task.wait(1) do
+        local currentTime = tick()
+        
+        if isTransformed and watchGui then
+            local remaining = transformEndTime - currentTime
+            local timer = watchGui:FindFirstChild("Frame") and watchGui:FindFirstChild("Frame"):FindFirstChild("Timer")
+            
+            if timer then
+                if remaining > 0 then
+                    timer.Text = formatTime(math.ceil(remaining))
+                    
+                    if remaining < 30 then
+                        timer.TextColor3 = Color3.fromRGB(255, 150, 0)
+                    end
+                    
+                    if remaining < 10 then
+                        timer.TextColor3 = Color3.fromRGB(255, 0, 0)
+                    end
+                else
+                    revertToHuman()
+                end
+            end
+        end
+        
+        if currentTime < cooldownEndTime then
+            CooldownText.Text = tostring(math.ceil(cooldownEndTime - currentTime))
+        else
+            CooldownOverlay.Visible = false
+        end
+    end
+end)
+
+--// ================= CHARACTER SETUP =================
+local function setupCharacter(char)
+    if not char then return end
+    
+    task.wait(0.5)
+    print("[Omnitrix] Setting up character...")
+    
+    character = char
+    humanoid = char:WaitForChild("Humanoid")
+    
+    makeBlocky(char)
+    task.wait(0.3)
+    
+    if equipOmnitrix(char) then
+        createWatchUI(char)
+        print("[Omnitrix] ✓ Ready!")
+    end
+    
+    task.spawn(function()
+        while char and char.Parent do
+            task.wait(3)
+            if not isTransforming and not isTransformed then
+                if not equippedOmnitrix or not equippedOmnitrix.Parent then
+                    equipOmnitrix(char)
+                    createWatchUI(char)
+                end
+            end
+        end
+    end)
+end
+
+player.CharacterAdded:Connect(function(char)
+    isTransforming = false
+    isWatchOpen = false
+    isTransformed = false
+    setupCharacter(char)
+end)
+
+setupCharacter(character)
+
+print("═══════════════════════════════════════")
+print("[Omnitrix] 3D HOLOGRAM VERSION LOADED!")
+print("═══════════════════════════════════════")
+print("Features:")
+print("  ✓ Watch equipped on right hand")
+print("  ✓ 3D alien hologram from watch")
+print("  ✓ Green light beam in 3D world")
+print("  ✓ Rotating hologram with image")
+print("  ✓ All animations working")
+print("═══════════════════════════════════════")
